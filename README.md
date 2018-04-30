@@ -6,7 +6,7 @@ April 30, 2018
 
 This is version 1.0 of QRATPre+.
 
-QRATPre+ is a preprocessors to simplify quantified Boolean formulas (QBFs)
+QRATPre+ is a preprocessor to simplify quantified Boolean formulas (QBFs)
 given in prenex conjunctive normal form (PCNF). For simplification, QRATPre+
 tries to eliminate redundant clauses from the PCNF, or universal literals from
 clauses. It implements redundancy checking based on the QRAT+ proof

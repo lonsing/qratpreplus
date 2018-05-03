@@ -3,7 +3,7 @@ QRATPre+ is a novel preprocessor to simplify quantified Boolean formulas (QBFs)
 given in prenex conjunctive normal form (PCNF). For simplification, QRATPre+
 tries to eliminate redundant clauses from the PCNF, or universal literals from
 clauses. It implements redundancy checking based on the QRAT+ proof
-system. QRAT+ is a generalisation of the QRAT proof system introduced by
+system. QRAT+ is a generalisation of the QRAT proof system. QRAT was introduced by
 Heule, Seidl, and Biere:
 
 * M. Heule, M. Seidl, A. Biere: Solution Validation and Extraction for QBF

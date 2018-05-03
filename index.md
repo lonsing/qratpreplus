@@ -1,37 +1,56 @@
-## Welcome to GitHub Pages
 
-You can use the [editor on GitHub](https://github.com/lonsing/qratpreplus/edit/gh-pages/index.md) to maintain and preview the content for your website in Markdown files.
+QRATPre+ is a novel preprocessor to simplify quantified Boolean formulas (QBFs)
+given in prenex conjunctive normal form (PCNF). For simplification, QRATPre+
+tries to eliminate redundant clauses from the PCNF, or universal literals from
+clauses. It implements redundancy checking based on the QRAT+ proof
+system. QRAT+ is a generalisation of the QRAT proof system introduced by
+Heule, Seidl, and Biere:
 
-Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
+* M. Heule, M. Seidl, A. Biere: Solution Validation and Extraction for QBF
+  Preprocessing. J. Autom. Reasoning 58(1), 2017.
 
-### Markdown
+* M. Heule, M. Seidl, A. Biere: A Unified Proof System for QBF
+  Preprocessing. JCAR 2014.
 
-Markdown is a lightweight and easy-to-use syntax for styling your writing. It includes conventions for
+QRATPre+ is the _first available implementation_ of the QRAT/QRAT+ proof systems for redundancy removal in QBF preprocessing.
 
-```markdown
-Syntax highlighted code block
+For redundancy checking, the QRAT+ system relies on QBF-specific unit
+propagation with universal reduction to handle the literals of certain
+universal variables. This is in contrast to QRAT, which applies propositional
+unit propagation and treats every variable as existentially quantified. As a
+result, redundancy removal based on QRAT+ is more powerful than based on QRAT.
 
-# Header 1
-## Header 2
-### Header 3
+### PUBLICATIONS ###
 
-- Bulleted
-- List
+The theory behind QRATPre+ is described in our 
+[IJCAR 2018](http://ijcar2018.org/) paper:
 
-1. Numbered
-2. List
+* Florian Lonsing and Uwe Egly. QRAT+: Generalizing QRAT by a More Powerful
+QBF Redundancy Property. In Proc. of the 9th International Joint Conference on
+Automated Reasoning (IJCAR) 2018, Springer, LNCS.
 
-**Bold** and _Italic_ and `Code` text
+A preprint of the above paper is available on arXiv:
 
-[Link](url) and ![Image](src)
-```
+* [https://arxiv.org/pdf/1804.02908](https://arxiv.org/pdf/1804.02908)
 
-For more details see [GitHub Flavored Markdown](https://guides.github.com/features/mastering-markdown/).
 
-### Jekyll Themes
+### SOURCE CODE ###
 
-Your Pages site will use the layout and styles from the Jekyll theme you have selected in your [repository settings](https://github.com/lonsing/qratpreplus/settings). The name of this theme is saved in the Jekyll `_config.yml` configuration file.
+QRATPre+ is free software released under GPLv3:
 
-### Support or Contact
+[https://www.gnu.org/copyleft/gpl.html](https://www.gnu.org/copyleft/gpl.html)
 
-Having trouble with Pages? Check out our [documentation](https://help.github.com/categories/github-pages-basics/) or [contact support](https://github.com/contact) and we’ll help you sort it out.
+The latest release is available from
+[GitHub](https://github.com/lonsing/qratpreplus).
+
+* April 30 2018: [Version 1.0]()
+
+### EXAMPLE ###
+
+### CONTACT INFORMATION ###
+
+For comments, questions, bug reports etc. related to QRATPre+, please contact:
+
+Florian Lonsing, TU Wien, Austria
+
+[http://www.kr.tuwien.ac.at/staff/lonsing/](http://www.kr.tuwien.ac.at/staff/lonsing/)

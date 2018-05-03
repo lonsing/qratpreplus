@@ -1,1 +1,4 @@
 theme: jekyll-theme-slate
+description: This is a test description.
+title: This is a test title.
+show_downloads: true

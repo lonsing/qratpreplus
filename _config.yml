@@ -1,4 +1,4 @@
 theme: jekyll-theme-slate
-description: This is a test description.
-title: This is a test title.
+description: A preprocessor for quantified Boolean formulas.
+title: QRATPre+.
 show_downloads: true

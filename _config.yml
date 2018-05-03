@@ -1,4 +1,4 @@
 theme: jekyll-theme-slate
 description: A preprocessor for quantified Boolean formulas.
 title: QRATPre+
-show_downloads: true
+show_downloads: false

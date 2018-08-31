@@ -44,18 +44,21 @@ The cactus plot above shows the runtimes of the solvers
 2018](http://www.qbflib.org/qbfeval18.php). [CADET](https://github.com/MarkusRabe/cadet)
 is a state-of-the-art 2QBF solver. DepQBF-QxQBH and DepQBF-QxBH are
 packages consisting of the QCDCL solver
-[DepQBF](http://lonsing.github.io/depqbf/) coupled with a
-preprocessing module that integrates several QBF preprocessors. The
-preprocessing module is implemented as a shellscript called
+[DepQBF](http://lonsing.github.io/depqbf/) and a preprocessing module
+that integrates several QBF preprocessors. The preprocessing module is
+implemented as a shell script called
 [QBFRelay](https://github.com/lonsing/qbfrelay). Variant
 *DepQBF-QxQBH* includes QRATPre+ whereas variant *DepQBF-QxBH* does
 not.
 
 As can be seen from the plot, the use of QRATPre+ in variant
-*DepQBF-QxQBH* is crucial to achieve top performance.
+*DepQBF-QxQBH* is crucial to achieve top performance. Thanks to
+QRATPre+, *DepQBF-QxQBH* won the 2QBF track in QBFEVAL 2018. While
+*DepQBF-QxQBH* solved 275 instances, *DepQBF-QxBH* solved only 243. It
+is remarkable that CADET solved 269 *without* any preprocessing.
 
-Note on practical applications (disclaimer): in contrast to CADET, DepQBF-QxQBH and
-DepQBF-QxBH cannot produce certificates.
+Note on practical applications (disclaimer): in contrast to CADET,
+DepQBF-QxQBH and DepQBF-QxBH do not produce certificates.
 
 ### SOURCE CODE ###
 

@@ -36,7 +36,7 @@ A preprint of the above paper is available on arXiv:
 
 ### QRATPRE+ IN QBFEVAL'17 ###
 
-<img src="./runtimes-2qbf.jpeg" alt="Runtimes of solvers on 2QBF instances." width="500"/>
+<img src="./runtimes-2qbf.jpeg" alt="Runtimes of solvers on 2QBF instances." width="600"/>
 
 
 ### SOURCE CODE ###

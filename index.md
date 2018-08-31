@@ -34,10 +34,28 @@ A preprint of the above paper is available on arXiv:
 * [https://arxiv.org/pdf/1804.02908](https://arxiv.org/pdf/1804.02908)
 
 
-### QRATPRE+ IN QBFEVAL'17 ###
+### QRATPRE+ IN QBFEVAL'18 ###
 
 <img src="./runtimes-2qbf.jpeg" alt="Runtimes of solvers on 2QBF instances." width="600"/>
 
+The cactus plot above shows the runtimes of the solvers
+*DepQBF-QxQBH*, *DepQBF-QxBH*, and *CADET* on the instances from the
+2QBF track of [QBFEVAL
+2018](http://www.qbflib.org/qbfeval18.php). [CADET](https://github.com/MarkusRabe/cadet)
+is a state-of-the-art 2QBF solver. DepQBF-QxQBH and DepQBF-QxBH are
+packages consisting of the QCDCL solver
+[DepQBF](http://lonsing.github.io/depqbf/) coupled with a
+preprocessing module that integrates several QBF preprocessors. The
+preprocessing module is implemented as a shellscript called
+[QBFRelay](https://github.com/lonsing/qbfrelay). Variant
+*DepQBF-QxQBH* includes QRATPre+ whereas variant *DepQBF-QxBH* does
+not.
+
+As can be seen from the plot, the use of QRATPre+ in variant
+*DepQBF-QxQBH* is crucial to achieve top performance.
+
+Note on practical applications (disclaimer): in contrast to CADET, DepQBF-QxQBH and
+DepQBF-QxBH cannot produce certificates.
 
 ### SOURCE CODE ###
 

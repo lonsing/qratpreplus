@@ -34,6 +34,11 @@ A preprint of the above paper is available on arXiv:
 * [https://arxiv.org/pdf/1804.02908](https://arxiv.org/pdf/1804.02908)
 
 
+### QRATPRE+ IN QBFEVAL'17 ###
+
+![Runtimes of solvers on 2QBF instances.](./runtimes-2qbf.jpeg)
+
+
 ### SOURCE CODE ###
 
 QRATPre+ is free software released under GPLv3:

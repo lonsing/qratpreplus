@@ -102,15 +102,10 @@ e 6 12 0
 -7 11 -12 0
 ```
 
-QRATPre+ is able to remove _all_ clauses in `formula.qdimacs`. The call `./qratpre+ --print-formula ./formula.qdimacs` produces the following output (i.e., a formula with a quantifier prefix but not containing any clauses): 
+QRATPre+ is able to remove _all_ clauses in `formula.qdimacs`. The call `./qratpre+ --print-formula ./formula.qdimacs` produces the following output: 
 
 ```
-p cnf 12 0
-e 1 2 7 8 0
-a 3 9 0
-e 4 10 0
-a 5 11 0
-e 6 12 0
+p cnf 0 0
 ```
 
 Now we configure QRATPre+ to apply redundancy detection based on the QRAT system instead of QRAT+ by parameter `--no-eabs`. The formula produced by calling `./qratpre+ --print-formula --no-eabs ./formula.qdimacs` is exactly the same as the given one, i.e., _no_ redundant clauses can be detected using the QRAT system:
@@ -160,11 +155,10 @@ e 6 0
 -5 6 0
 ```
 
-We configure QRATPre+ to only eliminate universal literals by parameters `--no-qbce --no-qrate --no-at`, thus switching off clause elimination techniques. QRATPre+ is able to remove _all_ universal variables appearing in the first quantifier block `a 1 2 0` from `formula.qdimacs`. The call `./qratpre+ --print-formula --no-qbce --no-qrate --no-at ./formula.qdimacs` produces the following output (the quantifier prefix is not cleaned up): 
+We configure QRATPre+ to only eliminate universal literals by parameters `--no-qbce --no-qrate --no-qat`, thus switching off clause elimination techniques. QRATPre+ is able to remove _all_ universal variables appearing in the first quantifier block `a 1 2 0` from `formula.qdimacs`. The call `./qratpre+ --print-formula --no-qbce --no-qrate --no-qat ./formula.qdimacs` produces the following output: 
 
 ```
 p cnf 6 8
-a 1 2 0
 e 3 4 0
 a 5 0
 e 6 0
@@ -178,7 +172,7 @@ e 6 0
 -5 6 0
 ```
 
-In contrast to that, if we apply the QRAT system instead of QRAT+ by parameter `--no-eabs`, then _no_ universal variables can be removed. The formula produced by calling `./qratpre+ --print-formula --no-qbce --no-qrate --no-at --no-eabs ./formula.qdimacs` is exactly the same as the given one:
+In contrast to that, if we apply the QRAT system instead of QRAT+ by parameter `--no-eabs`, then _no_ universal variables can be removed. The formula produced by calling `./qratpre+ --print-formula --no-qbce --no-qrate --no-qat --no-eabs ./formula.qdimacs` is exactly the same as the given one:
 
 ```
 p cnf 6 8
@@ -203,6 +197,6 @@ Hence universal literal elimination based on the QRAT+ proof system is more powe
 
 For comments, questions, bug reports etc. related to QRATPre+, please contact:
 
-Florian Lonsing, TU Wien, Austria
+Florian Lonsing, Stanford University, US
 
-[http://www.kr.tuwien.ac.at/staff/lonsing/](http://www.kr.tuwien.ac.at/staff/lonsing/)
+[http://www.florianlonsing.com/](http://www.florianlonsing.com/)

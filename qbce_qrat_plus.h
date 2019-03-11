@@ -1,6 +1,9 @@
 /*
  This file is part of QRATPre+.
 
+ Copyright 2019
+ Florian Lonsing, Stanford University, USA.
+
  Copyright 2018 
  Florian Lonsing, Vienna University of Technology, Austria.
 
@@ -18,15 +21,18 @@
  along with qratplus.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef QBCE_H_INCLUDED
-#define QBCE_H_INCLUDED
+#ifndef QRATPREPLUS_QBCE_H_INCLUDED
+#define QRATPREPLUS_QBCE_H_INCLUDED
 
-#include "qratplus.h"
+#include "qratpreplus.h"
 
 /* Returns nonzero iff redundant clauses were found. */
-int find_and_mark_redundant_clauses (QRATPlusPre * qr);
+int find_and_mark_redundant_clauses (QRATPrePlus * qr);
 
 /* Returns nonzero iff redundant literals were found. */
-int find_and_delete_redundant_literals (QRATPlusPre * qr);
+int find_and_delete_redundant_literals (QRATPrePlus * qr);
+
+void unlink_redundant_clauses (QRATPrePlus * qr);
+
 
 #endif

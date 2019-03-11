@@ -1,6 +1,9 @@
 /*
  This file is part of QRATPre+.
 
+ Copyright 2019
+ Florian Lonsing, Stanford University, USA.
+
  Copyright 2018 
  Florian Lonsing, Vienna University of Technology, Austria.
 
@@ -18,8 +21,8 @@
  along with qratplus.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef STACK_H_INCLUDED
-#define STACK_H_INCLUDED
+#ifndef QRATPREPLUS_STACK_H_INCLUDED
+#define QRATPREPLUS_STACK_H_INCLUDED
 
 #include "mem.h"
 

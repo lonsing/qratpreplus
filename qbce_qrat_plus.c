@@ -1,6 +1,9 @@
 /*
  This file is part of QRATPre+.
 
+ Copyright 2019
+ Florian Lonsing, Stanford University, USA.
+
  Copyright 2018 
  Florian Lonsing, Vienna University of Technology, Austria.
 
@@ -21,10 +24,10 @@
 #include <assert.h>
 #include <stdlib.h>
 #include "stack.h"
-#include "qratplus.h"
 #include "qbcp.h"
-#include "qbce-qrat-plus.h"
-#include <sys/resource.h>
+#include "util.h"
+#include "qbce_qrat_plus.h"
+#include "qratpreplus_internals.h"
 
 enum QRATPlusCheckMode
 {
@@ -44,77 +47,13 @@ typedef enum QRATPlusCheckMode QRATPlusCheckMode;
    expensive. */
 #define QRATPLUS_SOFT_TIME_LIMIT_CHECK_PERIOD 10
 
-/* NOTE / TODO: this function appears also in other module, merge. */
-/* Get process time. Can be used for performance statistics. */
-static double
-time_stamp ()
-{
-  double result = 0;
-  struct rusage usage;
-
-  if (!getrusage (RUSAGE_SELF, &usage))
-    {
-      result += usage.ru_utime.tv_sec + 1e-6 * usage.ru_utime.tv_usec;
-      result += usage.ru_stime.tv_sec + 1e-6 * usage.ru_stime.tv_usec;
-    }
-
-  return result;
-}
-
-/* NOTE / TODO: this function appears also in other module, merge. */
-static int
-exceeded_soft_time_limit (QRATPlusPre * qr)
-{
-  if (qr->soft_time_limit &&
-      (time_stamp () - qr->start_time) > qr->soft_time_limit)
-    return 1;
-  else
-    return 0;
-}
-
-/* TODO: put function in separate module, it is used in many other modules. */
-/* Print array 'lits' of literals of length 'num'. If 'print_info' is
-non-zero, then print info about the scope of each literal in the array. */
-static void
-print_lits (QRATPlusPre * qr, FILE * out, LitID * lits, unsigned int num,
-            const int print_info)
-{
-  Var *vars = qr->pcnf.vars;
-  LitID *p, *e;
-  for (p = lits, e = p + num; p < e; p++)
-    {
-      LitID lit = *p;
-      Var *var = LIT2VARPTR (vars, lit);
-      if (print_info)
-        fprintf (out, "%c(%d)%d ",
-                 SCOPE_FORALL (var->scope) ? 'A' : 'E',
-                 var->scope->nesting, *p);
-      else
-        fprintf (out, "%d ", *p);
-    }
-  fprintf (out, "0\n");
-}
-
-//TODO: this function also appears in other module, merge.
-/* Returns true if and only if 'lit' appears in the literal array bounded by
-   'start' and 'end' (position 'end' is not part of the array). */
-static int
-find_literal (LitID lit, LitID * start, LitID * end)
-{
-  LitID *p;
-  for (p = start; p < end; p++)
-    if (*p == lit)
-      return 1;
-  return 0;
-}
-
 /* Returns true if and only if 'lit' appears in the literal array
    bounded by 'start' and 'end' (position 'end' is not part of the
-   array) AND 'lit' is from a scope of nesting level equal to
-   'nesting' or smaller. Assumes that literal array is sorted by scope
+   array) AND 'lit' is from a qblock of nesting level equal to
+   'nesting' or smaller. Assumes that literal array is sorted by qblock
    ordering. */
 static int
-find_literal_outer_tautology (QRATPlusPre * qr, LitID taut_lit, Nesting nesting,
+find_literal_outer_tautology (QRATPrePlus * qr, LitID taut_lit, Nesting nesting,
                               LitID * start, LitID * end)
 {
   LitID *p;
@@ -122,7 +61,7 @@ find_literal_outer_tautology (QRATPlusPre * qr, LitID taut_lit, Nesting nesting,
     {
       LitID lit = *p;
       Var *var = LIT2VARPTR (qr->pcnf.vars, lit);
-      if (var->scope->nesting > nesting)
+      if (var->qblock->nesting > nesting)
         break;
       if (lit == taut_lit)
         return 1;
@@ -134,7 +73,7 @@ find_literal_outer_tautology (QRATPlusPre * qr, LitID taut_lit, Nesting nesting,
    tautologous with respect to a variable that is smaller than or
    equal to 'lit' in the prefix ordering. */
 static int
-check_outer_tautology (QRATPlusPre * qr, Clause *c, LitID lit, Clause *occ)
+check_outer_tautology (QRATPrePlus * qr, Clause *c, LitID lit, Clause *occ)
 {
   assert (!c->redundant);
   assert (!occ->redundant);
@@ -144,8 +83,8 @@ check_outer_tautology (QRATPlusPre * qr, Clause *c, LitID lit, Clause *occ)
   qr->clause_redundancy_or_checks++;
   
   Var *var = LIT2VARPTR (qr->pcnf.vars, lit);
-  Scope *scope = var->scope;
-  Nesting nesting = scope->nesting;
+  QBlock *qblock = var->qblock;
+  Nesting nesting = qblock->nesting;
   /* Literal 'lit' must appear in complementary phases in clauses 'c'
      and 'occ'. */
   assert (find_literal (lit, c->lits, c->lits + c->num_lits));
@@ -160,8 +99,8 @@ check_outer_tautology (QRATPlusPre * qr, Clause *c, LitID lit, Clause *occ)
       qr->clause_redundancy_or_checks_lits_seen++;
       LitID cl = *cp;
       Var *cv = LIT2VARPTR (qr->pcnf.vars, cl);
-      /* Can ignore variables from scopes larger than 'lit'. */
-      if (qbce_check_taut_by_nesting && cv->scope->nesting > nesting)
+      /* Can ignore variables from qblocks larger than 'lit'. */
+      if (qbce_check_taut_by_nesting && cv->qblock->nesting > nesting)
         break;
       /* Must ignore potential blocking literal 'lit'. */
       if (cl != lit)
@@ -171,7 +110,7 @@ check_outer_tautology (QRATPlusPre * qr, Clause *c, LitID lit, Clause *occ)
              'lit'. Check whether other clause 'occ' contains
              complementary literal '-cl'. */
 
-          if ((!qbce_check_taut_by_nesting && (cv->scope->nesting <= nesting)
+          if ((!qbce_check_taut_by_nesting && (cv->qblock->nesting <= nesting)
                && find_literal (-cl, occ->lits, occ->lits + occ->num_lits)) ||
               (qbce_check_taut_by_nesting && find_literal_outer_tautology
                (qr, -cl, nesting, occ->lits, occ->lits + occ->num_lits)))
@@ -183,7 +122,7 @@ check_outer_tautology (QRATPlusPre * qr, Clause *c, LitID lit, Clause *occ)
 
 /* Return nonzero iff clause 'c' has qrat on literal 'lit'. */
 static int
-has_qrat_on_literal (QRATPlusPre * qr, Clause *c, LitID lit)
+has_qrat_on_literal (QRATPrePlus * qr, Clause *c, LitID lit)
 {
   assert (!c->redundant);
   assert (c->num_lits > 0);
@@ -210,7 +149,7 @@ has_qrat_on_literal (QRATPlusPre * qr, Clause *c, LitID lit)
       
       if (!qrat_qbcp_check (qr, c, lit, occ))
         {
-          if (var->scope->type == QTYPE_EXISTS)
+          if (var->qblock->type == QTYPE_EXISTS)
             {
               /* Collect 'occ' as a witness for non-redundancy of 'c' (on
                  'lit'). */
@@ -237,12 +176,12 @@ has_qrat_on_literal (QRATPlusPre * qr, Clause *c, LitID lit)
 
 /* Return nonzero iff 'lit' is a blocking literal in clause 'c'. */
 static int
-is_literal_blocking (QRATPlusPre * qr, Clause *c, LitID lit)
+is_literal_blocking (QRATPrePlus * qr, Clause *c, LitID lit)
 {
   assert (!c->redundant);
   assert (c->num_lits > 0);
   Var *var = LIT2VARPTR (qr->pcnf.vars, lit);
-  assert(var->scope->type == QTYPE_EXISTS);
+  assert(var->qblock->type == QTYPE_EXISTS);
   assert (LIT_NEG (lit) || LIT_POS (lit));
   /* Set pointer to stack of clauses containing literals complementary to 'lit'. */
   ClausePtrStack *comp_occs = LIT_NEG (lit) ? 
@@ -283,7 +222,7 @@ is_literal_blocking (QRATPlusPre * qr, Clause *c, LitID lit)
 
 /* Return nonzero iff clause 'c' has QRAT. */
 static int
-has_clause_qrat (QRATPlusPre * qr, Clause *c)
+has_clause_qrat (QRATPrePlus * qr, Clause *c)
 {
   assert (!c->redundant);
   LitID *p, *e;
@@ -293,7 +232,7 @@ has_clause_qrat (QRATPlusPre * qr, Clause *c)
       LitID lit = *p;
       Var *var = LIT2VARPTR (qr->pcnf.vars, lit);
       /* Check if existential literal 'lit' is indeed a blocking literal. */
-      if (var->scope->type == QTYPE_EXISTS)
+      if (var->qblock->type == QTYPE_EXISTS)
         {
           if (has_qrat_on_literal (qr, c, lit))
             return 1;
@@ -302,15 +241,14 @@ has_clause_qrat (QRATPlusPre * qr, Clause *c)
   return 0;
 }
 
-//TODO NOTE: code is very similar to 'is_literal_blocking', merge
 /* Return nonzero iff 'lit' is blocked in clause 'c'. */
 static int
-is_literal_blocked (QRATPlusPre * qr, Clause *c, LitID lit)
+is_literal_blocked (QRATPrePlus * qr, Clause *c, LitID lit)
 {
   assert (!c->redundant);
   assert (c->num_lits > 0);
   Var *var = LIT2VARPTR (qr->pcnf.vars, lit);
-  assert(var->scope->type == QTYPE_FORALL);
+  assert(var->qblock->type == QTYPE_FORALL);
   assert (LIT_NEG (lit) || LIT_POS (lit));
   /* Set pointer to stack of clauses containing literals complementary to 'lit'. */
   ClausePtrStack *comp_occs = LIT_NEG (lit) ? 
@@ -344,7 +282,7 @@ is_literal_blocked (QRATPlusPre * qr, Clause *c, LitID lit)
 
 /* Return nonzero iff clause 'c' is blocked. */
 static int
-is_clause_blocked (QRATPlusPre * qr, Clause *c)
+is_clause_blocked (QRATPrePlus * qr, Clause *c)
 {
   assert (!c->redundant);
   LitID *p, *e;
@@ -354,7 +292,7 @@ is_clause_blocked (QRATPlusPre * qr, Clause *c)
       LitID lit = *p;
       Var *var = LIT2VARPTR (qr->pcnf.vars, lit);
       /* Check if existential literal 'lit' is indeed a blocking literal. */
-      if (var->scope->type == QTYPE_EXISTS)
+      if (var->qblock->type == QTYPE_EXISTS)
         {
           if (is_literal_blocking (qr, c, lit))
             return 1;
@@ -366,7 +304,7 @@ is_clause_blocked (QRATPlusPre * qr, Clause *c)
 /* Returns nonzero iff clause 'c' meets the current limits (if not, then 'c'
    is not checked for redundancy). */
 static int
-reschedule_is_clause_within_limits (QRATPlusPre * qr, Clause *c)
+reschedule_is_clause_within_limits (QRATPrePlus * qr, Clause *c)
 {
   if (c->num_lits < qr->limit_min_clause_len)
     {
@@ -418,7 +356,7 @@ reschedule_is_clause_within_limits (QRATPlusPre * qr, Clause *c)
    being redundant if the check of the outer resolvent of 'c' and 'd'
    failed. That check may now succeed as 'c' was found redundant. */
 static void
-reschedule_from_redundant_clause (QRATPlusPre * qr, Clause *c, 
+reschedule_from_redundant_clause (QRATPrePlus * qr, Clause *c, 
                                   ClausePtrStack *rescheduled)
 {
   if (qr->options.verbosity >= 2)
@@ -454,7 +392,7 @@ reschedule_from_redundant_clause (QRATPlusPre * qr, Clause *c,
 }
 
 static void
-reset_witness_clauses (QRATPlusPre *qr)
+reset_witness_clauses (QRATPrePlus *qr)
 {
   Clause **cp, **ce;
   for (cp = qr->witness_clauses.start, ce = qr->witness_clauses.top; 
@@ -468,7 +406,7 @@ reset_witness_clauses (QRATPlusPre *qr)
 }
 
 static void
-reschedule_from_redundant_witness_clauses (QRATPlusPre *qr, 
+reschedule_from_redundant_witness_clauses (QRATPrePlus *qr, 
                                            ClausePtrStack *rescheduled)
 {
   if (qr->options.verbosity >= 2)
@@ -520,7 +458,7 @@ compare_clauses_by_id (const void * cp1, const void * cp2)
 }
 
 static void
-permute_clauses_to_be_checked (QRATPlusPre * qr, ClausePtrStack *to_be_checked)
+permute_clauses_to_be_checked (QRATPrePlus * qr, ClausePtrStack *to_be_checked)
 {
   if (!EMPTY_STACK (*to_be_checked))
     {
@@ -542,7 +480,7 @@ permute_clauses_to_be_checked (QRATPlusPre * qr, ClausePtrStack *to_be_checked)
       unsigned int i;
       for (i = ((unsigned int)COUNT_STACK (*to_be_checked)) - 1; i >= 1; i--)
         {
-          unsigned int j = rand () % (i+1);
+          unsigned int j = rand_r (&qr->options.seed) % (i+1);
           assert (i < COUNT_STACK (*to_be_checked));
           assert (j < COUNT_STACK (*to_be_checked));
           Clause *tmp = to_be_checked->start[i];
@@ -564,25 +502,8 @@ permute_clauses_to_be_checked (QRATPlusPre * qr, ClausePtrStack *to_be_checked)
     }
 }
 
-//TODO: function appears also in other module, merge
-/* Returns number of literals in 'c' with quantifier type 'type'. */
-static unsigned int
-count_qtype_literals (QRATPlusPre * qr, Clause * c, QuantifierType type)
-{
-  unsigned int result = 0;
-  LitID *p, *e;
-  for (p = c->lits, e = p + c->num_lits; p < e; p++)
-    {
-      LitID lit = *p;
-      Var *var = LIT2VARPTR (qr->pcnf.vars, lit);
-      if (var->scope->type == type)
-        result++;
-    }
-  return result;
-}
-
 static Clause *
-find_non_redundant_occ (QRATPlusPre * qr, ClausePtrStack *occs)
+find_non_redundant_occ (QRATPrePlus * qr, ClausePtrStack *occs)
 {
   Clause **occ_p, **occ_e;
   for (occ_p = occs->start, occ_e = occs->top; occ_p < occ_e; occ_p++)
@@ -594,70 +515,8 @@ find_non_redundant_occ (QRATPlusPre * qr, ClausePtrStack *occs)
   return 0;
 }
 
-/* Returns nonzero iff new universal pure variables were found. */
-static int
-check_new_univ_pure_lits_from_clause_aux (QRATPlusPre * qr, Var * var)
-{
-  int result = 0;
-  assert (qr->options.pure_lits);
-  assert (var->scope->type == QTYPE_FORALL);
-  if (!find_non_redundant_occ (qr, &var->neg_occ_clauses))
-    {
-      if (find_non_redundant_occ (qr, &var->pos_occ_clauses))
-        {
-          /* Variable has only positive occurrences left. */
-          if (!var->input_pure_collected)
-            {
-              result = 1;
-              var->input_pure_collected = 1;
-              PUSH_STACK (qr->mm, qr->pure_input_lits, -var->id);
-              if (qr->options.verbosity >= 2)
-                fprintf (stderr, "    univ var %u became pos pure\n", var->id);
-            }
-        }
-    }
-  else if (!find_non_redundant_occ (qr, &var->pos_occ_clauses))
-    {
-      /* Variable has only negative occurrences left. */
-      if (!var->input_pure_collected)
-        {
-          result = 1;
-          var->input_pure_collected = 1;
-          PUSH_STACK (qr->mm, qr->pure_input_lits, var->id);
-          if (qr->options.verbosity >= 2)
-            fprintf (stderr, "    univ var %u became neg pure\n", var->id);
-        }
-    }
-  return result;
-}
-
-/* Returns nonzero iff new universal pure variables were found. */
-static int
-check_new_univ_pure_lits_from_clause (QRATPlusPre * qr, Clause * c)
-{
-  int result = 0;
-  assert (qr->options.pure_lits);
-  assert (c->redundant);
-  assert (c->cnt_univ_lits == count_qtype_literals (qr, c, QTYPE_FORALL));
-  /* Check if now redundant clause 'c' was the last occurrence containing a
-     universal variable in a certain polarity. */
-  if (c->cnt_univ_lits > 0)
-    {
-      LitID *p, *e;
-      for (p = c->lits, e = p + c->num_lits; p < e; p++)
-        {
-          LitID lit = *p;
-          Var *var = LIT2VARPTR (qr->pcnf.vars, lit);
-          if (var->scope->type == QTYPE_FORALL && 
-              check_new_univ_pure_lits_from_clause_aux (qr, var))
-            result = 1;
-        }
-    }
-  return result;
-}
-
 static void 
-reschedule_from_input_clauses (QRATPlusPre * qr, ClausePtrStack *rescheduled)
+reschedule_from_input_clauses (QRATPrePlus * qr, ClausePtrStack *rescheduled)
 {
   Clause *c;
   for (c = qr->pcnf.clauses.first; c; c = c->link.next)
@@ -673,10 +532,9 @@ reschedule_from_input_clauses (QRATPlusPre * qr, ClausePtrStack *rescheduled)
     }
 }
 
-/* Returns nonzero iff redundant clauses were found.  TODO: code of function
-   is very similar to 'find_and_mark_blocked_clauses', merge functions. */
+/* Returns nonzero iff redundant clauses were found. */
 static int
-find_and_mark_redundant_clauses_aux (QRATPlusPre * qr, 
+find_and_mark_redundant_clauses_aux (QRATPrePlus * qr, 
                                      ClausePtrStack *to_be_checked, 
                                      ClausePtrStack *rescheduled, 
                                      const QRATPlusCheckMode mode)
@@ -684,10 +542,10 @@ find_and_mark_redundant_clauses_aux (QRATPlusPre * qr,
   int result = 0;
   assert (mode == QRATPLUS_CHECK_MODE_QBCE || mode == QRATPLUS_CHECK_MODE_AT || 
           mode == QRATPLUS_CHECK_MODE_QRAT);
-  assert (!qr->options.no_qbce || !qr->options.no_asymm_taut_check || 
+  assert (!qr->options.no_qbce || !qr->options.no_qat || 
 	  !qr->options.no_qrate);
   assert (mode != QRATPLUS_CHECK_MODE_QRAT || !qr->options.no_qrate);
-  assert (mode != QRATPLUS_CHECK_MODE_AT || !qr->options.no_asymm_taut_check);
+  assert (mode != QRATPLUS_CHECK_MODE_AT || !qr->options.no_qat);
 
   assert (EMPTY_STACK (qr->witness_clauses));
 
@@ -712,13 +570,6 @@ find_and_mark_redundant_clauses_aux (QRATPlusPre * qr,
 
   unsigned int cur_redundant_clauses = 0;
   int changed = 1;
-  /* If universal variables became pure due to clause/literal elimination then
-     we schedule all nonredundant input clauses to be checked again since
-     propagation potential may have been affected, i.e. conflicts become more
-     likely. Rescheduling all clauses is safe, a more precise rescheduling is
-     complicated. However, since we eliminated a universal input variable,
-     which is good, we can perhaps justify to test all clauses again. */
-  int new_univ_pures = 0;
   while (!exceeded && changed)
     {
       /* Statistics. */
@@ -792,7 +643,7 @@ find_and_mark_redundant_clauses_aux (QRATPlusPre * qr,
                   continue;
                 }
               if ( (mode == QRATPLUS_CHECK_MODE_QBCE && is_clause_blocked (qr, c)) ||
-                   (mode == QRATPLUS_CHECK_MODE_AT && asymm_taut_check (qr, c)) ||
+                   (mode == QRATPLUS_CHECK_MODE_AT && qrat_qat_check (qr, c)) ||
                    (mode == QRATPLUS_CHECK_MODE_QRAT && has_clause_qrat (qr, c)) )
                 {
                   if (qr->options.verbosity >= 2)
@@ -803,28 +654,6 @@ find_and_mark_redundant_clauses_aux (QRATPlusPre * qr,
                     }
                   c->redundant = 1;
                   PUSH_STACK (qr->mm, qr->redundant_clauses, c);
-                  /* Make sure to detect ANY case where new pure literals were
-                     found. */
-                  if (qr->options.pure_lits)
-                    {
-                      assert (c->cnt_univ_lits == 
-                              count_qtype_literals (qr, c, QTYPE_FORALL));
-                      /* Tricky case: if we detect a redundant clause that
-                         contains universal literals, then the universal
-                         variables may either become syntactically pure, as
-                         detected and handled by
-                         'check_new_univ_pure_lits_from_clause', OR these
-                         variables may become pure in QBCP under the respective
-                         assignment, and trigger units and conflict that would
-                         not be triggered with the now redundant clause being
-                         stil present in the formula. Hence by setting
-                         'new_univ_pures = 1' we reschedule all clauses after the
-                         round if a clause containing universal literals was
-                         found. */
-                      if (check_new_univ_pure_lits_from_clause (qr, c) || 
-                          c->cnt_univ_lits > 0)
-                        new_univ_pures = 1; 
-                    }
                   cur_redundant_clauses++;
                   changed = 1;
                   result = 1;
@@ -839,20 +668,11 @@ find_and_mark_redundant_clauses_aux (QRATPlusPre * qr,
       /* Reschedule from redundant witness clauses in QBCE/QRAT mode. */
       if (mode != QRATPLUS_CHECK_MODE_AT)
         reschedule_from_redundant_witness_clauses (qr, rescheduled);
-      /* In AT/QRAT mode, reschedule all nonredundant clauses if new universal
-         pure variables were found. Universal pure variable increase
-         propagation power and hence more clauses may be found redundant. We
-         reschedule all nonredundant clauses here because a more precise
-         rescheduling is tricky. In QBCE mode, universal pure literals cannot
-         produce more tautological outer resolvents since clauses are
-         shortened by universal pure literals. */
-      if (qr->options.pure_lits_full_reschedule && 
-          mode != QRATPLUS_CHECK_MODE_QBCE && new_univ_pures)
-        {
-          reschedule_from_input_clauses (qr, rescheduled);
-          new_univ_pures = 0;
-        }
     }
+
+  /* Must update statistics after exiting loop due to exceeding time limit. */
+  assert (exceeded || cur_redundant_clauses == 0);
+  qr->cnt_redundant_clauses += cur_redundant_clauses;
 
 #ifndef NDEBUG
   Clause *c;
@@ -864,7 +684,7 @@ find_and_mark_redundant_clauses_aux (QRATPlusPre * qr,
 }
 
 static void
-unlink_redundant_clauses_occs (QRATPlusPre * qr, ClausePtrStack *occs)
+unlink_redundant_clauses_occs (QRATPrePlus * qr, ClausePtrStack *occs)
 {
   Clause **cp, **ce;
   for (cp = occs->start, ce = occs->top; cp < ce; cp++)
@@ -877,75 +697,6 @@ unlink_redundant_clauses_occs (QRATPlusPre * qr, ClausePtrStack *occs)
           cp--;
           ce--;
         }
-    }
-}
-
-static void
-unlink_redundant_clauses (QRATPlusPre * qr)
-{
-  qr->max_clause_length = 0;
-  qr->total_clause_lengths = 0;
-
-  Clause *c, *n;
-  for (c = qr->pcnf.clauses.first; c; c = n)
-    {
-      n = c->link.next;
-      if (c->redundant)
-        UNLINK (qr->pcnf.clauses, c, link);
-      else
-        {
-          qr->total_clause_lengths += c->num_lits;
-          if (c->num_lits > qr->max_clause_length)
-            qr->max_clause_length = c->num_lits;
-        }
-    }
-
-  qr->max_occ_cnt = 0;
-  qr->total_occ_cnts = 0;
-
-  Var *var, *vars_end;
-  for (var = qr->pcnf.vars, vars_end = var + qr->pcnf.size_vars; 
-       var < vars_end; var++)
-    {
-      unlink_redundant_clauses_occs (qr, &var->neg_occ_clauses);
-      unlink_redundant_clauses_occs (qr, &var->pos_occ_clauses);
-
-      /* Check if all occurrences of a universal variable were removed and
-         collect as pure literal. */
-      if (var->id && var->scope->type == QTYPE_FORALL)
-        {
-          if (EMPTY_STACK (var->neg_occ_clauses))
-            {
-              if (!EMPTY_STACK (var->pos_occ_clauses))
-                {
-                  /* Variable has only positive occurrences left. */
-                  if (!var->input_pure_collected)
-                    {
-                      var->input_pure_collected = 1;
-                      PUSH_STACK (qr->mm, qr->pure_input_lits, -var->id);
-                    }
-                }
-            }
-          else if (EMPTY_STACK (var->pos_occ_clauses))
-            {
-              /* Variable has only negative occurrences left. */
-              if (!var->input_pure_collected)
-                {
-                  var->input_pure_collected = 1;
-                  PUSH_STACK (qr->mm, qr->pure_input_lits, var->id);
-                }
-            }
-        }
-      
-      unlink_redundant_clauses_occs (qr, &var->watched_neg_occ_clauses);
-      unlink_redundant_clauses_occs (qr, &var->watched_pos_occ_clauses);
-      /* Update statistics. */
-      qr->total_occ_cnts += COUNT_STACK (var->neg_occ_clauses);
-      qr->total_occ_cnts += COUNT_STACK (var->pos_occ_clauses);
-      if ((unsigned int) COUNT_STACK (var->neg_occ_clauses) > qr->max_occ_cnt)
-        qr->max_occ_cnt = (unsigned int) COUNT_STACK (var->neg_occ_clauses);
-      if ((unsigned int) COUNT_STACK (var->pos_occ_clauses) > qr->max_occ_cnt)
-        qr->max_occ_cnt = (unsigned int) COUNT_STACK (var->pos_occ_clauses);
     }
 }
 
@@ -968,11 +719,11 @@ remove_clause_from_occs (ClausePtrStack *occs, Clause *c)
 /* Clean up redundant universal literal 'red_lit' from clause 'c', update data
    structures and watchers. */
 static void
-cleanup_redundant_universal_literal (QRATPlusPre * qr, Clause * c, LitID red_lit)
+cleanup_redundant_universal_literal (QRATPrePlus * qr, Clause * c, LitID red_lit)
 {
   assert (c->num_lits >= 2);
   assert (find_literal (red_lit, c->lits, c->lits + c->num_lits));
-  assert (LIT2VARPTR (qr->pcnf.vars, red_lit)->scope->type == QTYPE_FORALL);
+  assert (LIT2VARPTR (qr->pcnf.vars, red_lit)->qblock->type == QTYPE_FORALL);
   assert (c->rw_index != WATCHED_LIT_INVALID_INDEX);
   assert (c->lw_index != WATCHED_LIT_INVALID_INDEX);
   assert (c->lw_index != c->rw_index);
@@ -1005,7 +756,6 @@ cleanup_redundant_universal_literal (QRATPlusPre * qr, Clause * c, LitID red_lit
     &red_var->neg_occ_clauses : &red_var->pos_occ_clauses;
   remove_clause_from_occs (occs, c);
 
-  assert (c->cnt_univ_lits == count_qtype_literals (qr, c, QTYPE_FORALL));
   assert (count_qtype_literals (qr, c, QTYPE_FORALL) + 
           count_qtype_literals (qr, c, QTYPE_EXISTS) == c->num_lits);
 
@@ -1034,8 +784,6 @@ cleanup_redundant_universal_literal (QRATPlusPre * qr, Clause * c, LitID red_lit
         }
     }
 
-  assert (c->cnt_univ_lits > 0);
-  c->cnt_univ_lits--;
   c->num_lits--;
 
   if (c->num_lits == 1)
@@ -1049,7 +797,7 @@ cleanup_redundant_universal_literal (QRATPlusPre * qr, Clause * c, LitID red_lit
       LitID lit = c->lits[c->rw_index];
       Var *var = LIT2VARPTR (qr->pcnf.vars, lit);
       assert (var->assignment == ASSIGNMENT_UNDEF);
-      assert (var->scope->type == QTYPE_EXISTS);
+      assert (var->qblock->type == QTYPE_EXISTS);
       /* Add 'c' to watched occurrences. */
       if (LIT_NEG (lit))
 	PUSH_STACK (qr->mm, var->watched_neg_occ_clauses, c);
@@ -1067,18 +815,11 @@ cleanup_redundant_universal_literal (QRATPlusPre * qr, Clause * c, LitID red_lit
       else
 	PUSH_STACK (qr->mm, var->watched_pos_occ_clauses, c);
     }
-
-  if (qr->options.pure_lits)
-    {
-      fprintf (stderr, "Temporary restriction: pure literals"\
-               "cannot be combined with QRATU!\n");
-      abort ();
-    }
 }
 
 /* Return nonzero iff clause 'c' contains universal literals which have QRAT. */
 static int
-has_clause_qrat_literals (QRATPlusPre * qr, Clause * c)
+has_clause_qrat_literals (QRATPrePlus * qr, Clause * c)
 {
   assert (!c->redundant);
   int result = 0;
@@ -1088,7 +829,7 @@ has_clause_qrat_literals (QRATPlusPre * qr, Clause * c)
       LitID lit = *p;
       Var *var = LIT2VARPTR (qr->pcnf.vars, lit);
       /* Check if universal literal 'lit' has QRAT. */
-      if (var->scope->type == QTYPE_FORALL)
+      if (var->qblock->type == QTYPE_FORALL)
         {
           if (has_qrat_on_literal (qr, c, lit))
             {
@@ -1110,7 +851,7 @@ has_clause_qrat_literals (QRATPlusPre * qr, Clause * c)
 
 /* Return nonzero iff clause 'c' contains blocked universal literals. */
 static int
-has_clause_blocked_literals (QRATPlusPre * qr, Clause * c)
+has_clause_blocked_literals (QRATPrePlus * qr, Clause * c)
 {
   int result = 0;
   assert (!c->redundant);
@@ -1120,7 +861,7 @@ has_clause_blocked_literals (QRATPlusPre * qr, Clause * c)
       LitID lit = *p;
       Var *var = LIT2VARPTR (qr->pcnf.vars, lit);
       /* Check if universal literal 'lit' is blocked. */
-      if (var->scope->type == QTYPE_FORALL)
+      if (var->qblock->type == QTYPE_FORALL)
         {
           if (is_literal_blocked (qr, c, lit))
             {
@@ -1142,7 +883,7 @@ has_clause_blocked_literals (QRATPlusPre * qr, Clause * c)
 
 /* Returns nonzero iff redundant literals were found. */
 static int
-find_and_delete_redundant_literals_aux (QRATPlusPre * qr, 
+find_and_delete_redundant_literals_aux (QRATPrePlus * qr, 
                                      ClausePtrStack *to_be_checked, 
                                      ClausePtrStack *rescheduled, 
                                      const QRATPlusCheckMode mode)
@@ -1290,10 +1031,53 @@ find_and_delete_redundant_literals_aux (QRATPlusPre * qr,
 
 /* -------------------- START: PUBLIC FUNCTIONS -------------------- */
 
+void
+unlink_redundant_clauses (QRATPrePlus * qr)
+{
+  qr->max_clause_length = 0;
+  qr->total_clause_lengths = 0;
+
+  Clause *c, *n;
+  for (c = qr->pcnf.clauses.first; c; c = n)
+    {
+      n = c->link.next;
+      if (c->redundant)
+        UNLINK (qr->pcnf.clauses, c, link);
+      else
+        {
+          qr->total_clause_lengths += c->num_lits;
+          if (c->num_lits > qr->max_clause_length)
+            qr->max_clause_length = c->num_lits;
+        }
+    }
+
+  qr->max_occ_cnt = 0;
+  qr->total_occ_cnts = 0;
+
+  Var *var, *vars_end;
+  for (var = qr->pcnf.vars, vars_end = var + qr->pcnf.size_vars; 
+       var < vars_end; var++)
+    {
+      unlink_redundant_clauses_occs (qr, &var->neg_occ_clauses);
+      unlink_redundant_clauses_occs (qr, &var->pos_occ_clauses);
+      
+      unlink_redundant_clauses_occs (qr, &var->watched_neg_occ_clauses);
+      unlink_redundant_clauses_occs (qr, &var->watched_pos_occ_clauses);
+
+      /* Update statistics. */
+      qr->total_occ_cnts += COUNT_STACK (var->neg_occ_clauses);
+      qr->total_occ_cnts += COUNT_STACK (var->pos_occ_clauses);
+      if ((unsigned int) COUNT_STACK (var->neg_occ_clauses) > qr->max_occ_cnt)
+        qr->max_occ_cnt = (unsigned int) COUNT_STACK (var->neg_occ_clauses);
+      if ((unsigned int) COUNT_STACK (var->pos_occ_clauses) > qr->max_occ_cnt)
+        qr->max_occ_cnt = (unsigned int) COUNT_STACK (var->pos_occ_clauses);
+    }
+}
+
 /* Top-level function of literal redundancy detection. Returns nonzero iff
    redundant literals were found. */
 int
-find_and_delete_redundant_literals (QRATPlusPre * qr)
+find_and_delete_redundant_literals (QRATPrePlus * qr)
 {
   assert (!qr->options.no_ble || !qr->options.no_qratu);
   int result = 0;
@@ -1343,11 +1127,11 @@ find_and_delete_redundant_literals (QRATPlusPre * qr)
 /* Top-level function of clause redundancy detection. Returns nonzero iff
    redundant clauses were found. */
 int
-find_and_mark_redundant_clauses (QRATPlusPre * qr)
+find_and_mark_redundant_clauses (QRATPrePlus * qr)
 {
   int result = 0;
   /* We call this function only if either QBCE, AT, or QRAT is enabled. */
-  assert (!qr->options.no_qbce || !qr->options.no_asymm_taut_check || 
+  assert (!qr->options.no_qbce || !qr->options.no_qat || 
 	  !qr->options.no_qrate);
 
   ClausePtrStack to_be_checked;
@@ -1367,7 +1151,7 @@ find_and_mark_redundant_clauses (QRATPlusPre * qr)
     }
   
   /* AT checking. */
-  if (!qr->options.no_asymm_taut_check)
+  if (!qr->options.no_qat)
     {
       RESET_STACK (to_be_checked);
       RESET_STACK (rescheduled);
@@ -1381,8 +1165,7 @@ find_and_mark_redundant_clauses (QRATPlusPre * qr)
       reschedule_from_input_clauses (qr, &rescheduled);
 
       /* Remove redundant clauses from data structures, which should improve
-         QBCP performance. 
-         TODO/NOTE: this can actually also be done during iterations. */
+         QBCP performance. */
       unlink_redundant_clauses (qr);
 
       /* Check currently non-redundant clauses if they have AT. */

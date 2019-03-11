@@ -1,6 +1,9 @@
 /*
  This file is part of QRATPre+.
 
+ Copyright 2019
+ Florian Lonsing, Stanford University, USA.
+
  Copyright 2018 
  Florian Lonsing, Vienna University of Technology, Austria.
 
@@ -18,10 +21,10 @@
  along with qratplus.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef QBCP_H_INCLUDED
-#define QBCP_H_INCLUDED
+#ifndef QRATPREPLUS_QBCP_H_INCLUDED
+#define QRATPREPLUS_QBCP_H_INCLUDED
 
-#include "qratplus.h"
+#include "qratpreplus_internals.h"
 
 enum QBCPState
 {
@@ -31,9 +34,9 @@ enum QBCPState
 
 typedef enum QBCPState QBCPState;
 
-int asymm_taut_check (QRATPlusPre * qr, Clause *c);
+int qrat_qat_check (QRATPrePlus * qr, Clause *c);
 
-int qrat_qbcp_check (QRATPlusPre * qr, Clause *c, LitID lit, Clause *occ);
+int qrat_qbcp_check (QRATPrePlus * qr, Clause *c, LitID lit, Clause *occ);
 
 
 #endif

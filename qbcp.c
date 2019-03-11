@@ -21,53 +21,28 @@
 #include <assert.h>
 #include <stdlib.h>
 #include "qbcp.h"
-#include "qratplus.h"
+#include "util.h"
 
 /* Toggle expensive assertions for better control of fuzzing performance. */
 #if 1
 #define ASSERT_ALL_VAR_ASSIGNMENTS_RESET 1
 #define ASSERT_FORMULA_STATE_AFTER_QBCP 1
 #define ASSERT_WATCHED_LIT_STATE_BEFORE_ASSIGNING 1
-#define ASSERT_SAT_LIT_CNT_RESET_AFTER_RETRACT 1
 #else
 #define ASSERT_ALL_VAR_ASSIGNMENTS_RESET 0
 #define ASSERT_FORMULA_STATE_AFTER_QBCP 0
 #define ASSERT_WATCHED_LIT_STATE_BEFORE_ASSIGNING 0
-#define ASSERT_SAT_LIT_CNT_RESET_AFTER_RETRACT 0
 #endif
-
-/* TODO: move function to separate module.
-   Print array 'lits' of literals of length 'num'. If 'print_info' is
-   non-zero, then print info about the scope of each literal in the array. */
-static void
-print_lits (QRATPlusPre * qr, FILE * out, LitID * lits, unsigned int num,
-            const int print_info)
-{
-  Var *vars = qr->pcnf.vars;
-  LitID *p, *e;
-  for (p = lits, e = p + num; p < e; p++)
-    {
-      LitID lit = *p;
-      Var *var = LIT2VARPTR (vars, lit);
-      if (print_info)
-        fprintf (out, "%c(%d)%d ",
-                 SCOPE_FORALL (var->scope) ? 'A' : 'E',
-                 var->scope->nesting, *p);
-      else
-        fprintf (out, "%d ", *p);
-    }
-  fprintf (out, "0\n");
-}
 
 /* ---------- START: QUANTIFIER TYPE ABSTRACTION ---------- */
 
-/* A scope 's' is existential if it is existential in the prefix of
+/* A qblock 's' is existential if it is existential in the prefix of
    the input formula OR if it appears at a nesting level that is equal to
    or smaller than the current abstraction level 'qr->eabs_nesting'. By
    default, '->eabs_nesting' is set to UINT_MAX, thus making all
    variables to be treated as existential ones. */
 static QuantifierType
-eabs_get_qtype_of_scope (QRATPlusPre * qr, Scope *s)
+eabs_get_qtype_of_qblock (QRATPrePlus * qr, QBlock *s)
 {
   if (s->type == QTYPE_EXISTS || s->nesting <= qr->eabs_nesting)
     return QTYPE_EXISTS;
@@ -79,31 +54,31 @@ eabs_get_qtype_of_scope (QRATPlusPre * qr, Scope *s)
 }
 
 static QuantifierType
-eabs_get_qtype_of_var (QRATPlusPre * qr, Var * var)
+eabs_get_qtype_of_var (QRATPrePlus * qr, Var * var)
 {
-  return eabs_get_qtype_of_scope (qr, var->scope);
+  return eabs_get_qtype_of_qblock (qr, var->qblock);
 }
 
 static QuantifierType
-eabs_get_qtype_of_lit (QRATPlusPre * qr, LitID lit)
+eabs_get_qtype_of_lit (QRATPrePlus * qr, LitID lit)
 {
   return eabs_get_qtype_of_var (qr, LIT2VARPTR (qr->pcnf.vars, lit));
 }
 
 static int
-eabs_is_scope_existential (QRATPlusPre * qr, Scope *s)
+eabs_is_qblock_existential (QRATPrePlus * qr, QBlock *s)
 {
-  return (eabs_get_qtype_of_scope (qr, s) == QTYPE_EXISTS);
+  return (eabs_get_qtype_of_qblock (qr, s) == QTYPE_EXISTS);
 }
 
 static int
-eabs_is_var_existential (QRATPlusPre * qr, Var * var)
+eabs_is_var_existential (QRATPrePlus * qr, Var * var)
 {
-  return eabs_is_scope_existential (qr, var->scope);
+  return eabs_is_qblock_existential (qr, var->qblock);
 }
 
 static int
-eabs_is_lit_existential (QRATPlusPre * qr, LitID lit)
+eabs_is_lit_existential (QRATPrePlus * qr, LitID lit)
 {
   return eabs_is_var_existential (qr, LIT2VARPTR (qr->pcnf.vars, lit));
 }
@@ -112,7 +87,7 @@ eabs_is_lit_existential (QRATPlusPre * qr, LitID lit)
 /* ---------- END: QUANTIFIER TYPE ABSTRACTION ---------- */
 
 static void
-assign_and_enqueue (QRATPlusPre * qr, Var * var, Assignment a)
+assign_and_enqueue (QRATPrePlus * qr, Var * var, Assignment a)
 {
   assert (a != ASSIGNMENT_UNDEF);
   assert (var->assignment == ASSIGNMENT_UNDEF);
@@ -129,7 +104,7 @@ assign_and_enqueue (QRATPlusPre * qr, Var * var, Assignment a)
 /* Returns index of clause 'c' on stack 'occs' of occurrences or
    'INVALID_OCC_INDEX' if 'c' does not appear in 'occs'. */
 static unsigned int
-get_index_of_clause_in_occs (QRATPlusPre *qr, Clause *c, ClausePtrStack *occs)
+get_index_of_clause_in_occs (QRATPrePlus *qr, Clause *c, ClausePtrStack *occs)
 {
   Clause **p, **e;
   for (p = occs->start, e = occs->top; p < e; p++)
@@ -146,7 +121,7 @@ get_index_of_clause_in_occs (QRATPlusPre *qr, Clause *c, ClausePtrStack *occs)
    literal watcher to the leftmost literals in the clause (in the input
    formula, all leftmost literals in clauses are existential.) */
 static void
-retract_re_init_lit_watchers (QRATPlusPre * qr)
+retract_re_init_lit_watchers (QRATPrePlus * qr)
 {
   assert (!qr->options.no_eabs);
   Clause **occ_p, **occ_e;
@@ -173,7 +148,7 @@ retract_re_init_lit_watchers (QRATPlusPre * qr)
           LitID old_rw_lit = c->lits[c->rw_index];
           Var *old_rw_var = LIT2VARPTR (qr->pcnf.vars, old_rw_lit);
 
-          if (old_rw_var->scope->type == QTYPE_FORALL)
+          if (old_rw_var->qblock->type == QTYPE_FORALL)
             {
               ClausePtrStack *woccs = LIT_NEG (old_rw_lit) ?
                 &old_rw_var->watched_neg_occ_clauses : &old_rw_var->watched_pos_occ_clauses;
@@ -186,7 +161,7 @@ retract_re_init_lit_watchers (QRATPlusPre * qr)
               c->rw_index = c->num_lits - 1;
               LitID lit = c->lits[c->rw_index];
               Var *var = LIT2VARPTR (qr->pcnf.vars, lit);
-              assert (var->scope->type == QTYPE_EXISTS);
+              assert (var->qblock->type == QTYPE_EXISTS);
               /* Add 'c' to watched occurrences. */
               if (LIT_NEG (lit))
                 PUSH_STACK (qr->mm, var->watched_neg_occ_clauses, c);
@@ -212,59 +187,17 @@ retract_re_init_lit_watchers (QRATPlusPre * qr)
 }
 
 static void
-pure_lits_decrease_sat_lit_counts (QRATPlusPre * qr, Var * retracted_var)
-{
-  qr->pure_lits_cnt_update_calls++;
-  assert (qr->options.pure_lits);
-  assert (retracted_var->assignment != ASSIGNMENT_UNDEF);
-  /* Consider occurrences satisfied by previous assignment of
-     'retracted_var'. */
-  ClausePtrStack *occs = retracted_var->assignment == ASSIGNMENT_FALSE ?
-    &retracted_var->neg_occ_clauses : &retracted_var->pos_occ_clauses; 
-
-  Clause **occ_p, **occ_e;
-  for (occ_p = occs->start, occ_e = occs->top; occ_p < occ_e; occ_p++)
-    {
-      qr->pure_lits_occs_seen++;
-      Clause *c = *occ_p;
-      if (!c->ignore_in_qbcp && !c->redundant)
-	{
-	  if (qr->options.verbosity >= 2)
-	    {
-	      fprintf (stderr, "    decreasing sat-lit-cnt (old value: %u) of clause: ", c->cnt_sat_lits);
-	      print_lits (qr, stderr, c->lits, c->num_lits, 1);
-	    }
-	  assert (c->cnt_sat_lits > 0);
-	  c->cnt_sat_lits--;
-	}
-    }
-}
-
-static void
-retract_assigned_var (QRATPlusPre * qr, Var * var)
+retract_assigned_var (QRATPrePlus * qr, Var * var)
 {
   assert (var->assignment != ASSIGNMENT_UNDEF);
   /* NOTE: variable may or may not have been propagated already. */
   if (var->propagated)
-    {
-      if (qr->options.pure_lits)
-	pure_lits_decrease_sat_lit_counts (qr, var);
-      var->propagated = 0;
-    }
+    var->propagated = 0;
   var->assignment = ASSIGNMENT_UNDEF;
 }
 
-/* For assertion checking only. */
 static void
-assert_clause_sat_lit_counts_reset (QRATPlusPre * qr)
-{
-  Clause *c;
-  for (c = qr->pcnf.clauses.first; c; c = c->link.next)
-    assert (c->cnt_sat_lits == 0);
-}
-
-static void
-retract (QRATPlusPre * qr)
+retract (QRATPrePlus * qr)
 {
   /* Must retract propagated and unpropagated variables. */
   VarID *qbcp_p, *qbcp_e;
@@ -281,12 +214,6 @@ retract (QRATPlusPre * qr)
      at an existential literal. Update watchers in collected clauses. */
   if (!qr->options.no_eabs)
     retract_re_init_lit_watchers (qr);
-
-#ifndef NDEBUG
-#if ASSERT_SAT_LIT_CNT_RESET_AFTER_RETRACT
-  assert_clause_sat_lit_counts_reset (qr);
-#endif
-#endif
 }
 
 /* Find index of a new unassigned literal in 'c->lits' to watch, starting to
@@ -296,7 +223,7 @@ retract (QRATPlusPre * qr)
    literal is found, or 'WATCHED_LIT_CLAUSE_SAT' if clause satisfied, or index
    of new watched literal. */
 static unsigned int
-get_index_of_new_watched_lit (QRATPlusPre * qr, Clause *c, 
+get_index_of_new_watched_lit (QRATPrePlus * qr, Clause *c, 
                               unsigned int start_index, 
                               QuantifierType desired_type)
 {
@@ -325,7 +252,7 @@ get_index_of_new_watched_lit (QRATPlusPre * qr, Clause *c,
 
 /* For assertion checking only. */
 static int
-is_clause_empty (QRATPlusPre *qr, Clause *c)
+is_clause_empty (QRATPrePlus *qr, Clause *c)
 {
   assert (!c->ignore_in_qbcp && !c->redundant);
   LitID *p, *e;
@@ -346,7 +273,7 @@ is_clause_empty (QRATPlusPre *qr, Clause *c)
 
 /* For assertion checking only. */
 static int
-is_clause_satisfied (QRATPlusPre *qr, Clause *c)
+is_clause_satisfied (QRATPrePlus *qr, Clause *c)
 {
   assert (!c->ignore_in_qbcp && !c->redundant);
   LitID *p, *e;
@@ -364,7 +291,7 @@ is_clause_satisfied (QRATPlusPre *qr, Clause *c)
 /* Returns unique unassigned existential literal in clause or 0 if such
    literal does not exist. */
 static LitID
-find_unique_unassigned_existential_lit (QRATPlusPre *qr, Clause *c)
+find_unique_unassigned_existential_lit (QRATPrePlus *qr, Clause *c)
 {
   LitID result = 0;
   LitID *p, *e;
@@ -385,24 +312,11 @@ find_unique_unassigned_existential_lit (QRATPlusPre *qr, Clause *c)
   return result;
 }
 
-//TODO: this function appears also in other module, merge
-/* Returns true if and only if 'lit' appears in the literal array bounded by
-   'start' and 'end' (position 'end' is not part of the array). */
-static int
-find_literal (LitID lit, LitID * start, LitID * end)
-{
-  LitID *p;
-  for (p = start; p < end; p++)
-    if (*p == lit)
-      return 1;
-  return 0;
-}
-
 /* Returns nonzero iff all universal literals smaller than 'check_lit' with
    respect to quantifier ordering in clause 'c' are falsified under current
    assignment. */
 static int
-check_smaller_universal_lits_falsified (QRATPlusPre *qr, Clause *c, 
+check_smaller_universal_lits_falsified (QRATPrePlus *qr, Clause *c, 
                                          LitID check_lit)
 {
   assert (!is_clause_satisfied (qr, c));
@@ -414,9 +328,9 @@ check_smaller_universal_lits_falsified (QRATPlusPre *qr, Clause *c,
     {
       LitID lit = *p;
       Var *var = LIT2VARPTR (qr->pcnf.vars, lit);
-      if (var->scope->nesting > check_var->scope->nesting)
+      if (var->qblock->nesting > check_var->qblock->nesting)
         return 1;
-      assert (var->scope->nesting <= check_var->scope->nesting);
+      assert (var->qblock->nesting <= check_var->qblock->nesting);
       /* Check assignment of universal literals smaller than 'check_lit'. */
       if (eabs_get_qtype_of_var (qr, var) == QTYPE_FORALL)
         {
@@ -431,7 +345,7 @@ check_smaller_universal_lits_falsified (QRATPlusPre *qr, Clause *c,
 
 /* For assertion checking only. */
 static int
-is_clause_unit (QRATPlusPre *qr, Clause *c)
+is_clause_unit (QRATPrePlus *qr, Clause *c)
 {
   assert (!c->ignore_in_qbcp && !c->redundant);
 
@@ -449,7 +363,7 @@ is_clause_unit (QRATPlusPre *qr, Clause *c)
 }
 
 static void
-handle_unit_clause (QRATPlusPre * qr, Clause *c, LitID unit_lit)
+handle_unit_clause (QRATPrePlus * qr, Clause *c, LitID unit_lit)
 {
   assert (is_clause_unit (qr, c));
   LitID unassigned_lit = unit_lit;
@@ -463,7 +377,7 @@ handle_unit_clause (QRATPlusPre * qr, Clause *c, LitID unit_lit)
 /* Like 'propagate_clause (...)' but check and updated watched literals to see
    if clause is satisfied, unit, or conflicting under enqueued assignment. */
 static QBCPState
-propagate_clause_watched_lits (QRATPlusPre * qr, Clause *c)
+propagate_clause_watched_lits (QRATPrePlus * qr, Clause *c)
 {
   assert (!c->ignore_in_qbcp);
   assert (!c->redundant);
@@ -575,7 +489,7 @@ propagate_clause_watched_lits (QRATPlusPre * qr, Clause *c)
          currently treated as existential under the abstraction. When retracting
          assignments, must make sure to properly set right watcher to an
          existential literal. */
-      if (!qr->options.no_eabs && new_rw_var->scope->type == QTYPE_FORALL && 
+      if (!qr->options.no_eabs && new_rw_var->qblock->type == QTYPE_FORALL && 
           !c->lw_update_collected)
         {
           c->lw_update_collected = 1;
@@ -613,7 +527,7 @@ propagate_clause_watched_lits (QRATPlusPre * qr, Clause *c)
 
 /* Check if clause is satisfied, unit, or conflicting under enqueued assignment. */
 static QBCPState
-propagate_clause (QRATPlusPre * qr, Clause *c)
+propagate_clause (QRATPrePlus * qr, Clause *c)
 {
   assert (!c->ignore_in_qbcp);
   assert (!c->redundant);
@@ -672,14 +586,11 @@ propagate_clause (QRATPlusPre * qr, Clause *c)
 }
 
 static Clause *
-find_unsatisfied_occ (QRATPlusPre * qr, ClausePtrStack *occs)
+find_unsatisfied_occ (QRATPrePlus * qr, ClausePtrStack *occs)
 {
  Clause **occ_p, **occ_e;
   for (occ_p = occs->start, occ_e = occs->top; occ_p < occ_e; occ_p++)
     {
-      /* NOTE: this function will also be called in assertion checking. Hence
-         counts are correct only if assertions are disabled. */
-      qr->pure_lits_occs_seen++;
       Clause *c = *occ_p;
       if (!c->ignore_in_qbcp && !c->redundant)
 	if (!is_clause_satisfied (qr, c))
@@ -688,79 +599,9 @@ find_unsatisfied_occ (QRATPlusPre * qr, ClausePtrStack *occs)
   return 0;
 }
 
-static void
-check_and_assign_universal_pure_lits_aux (QRATPlusPre * qr, LitID lit)
-{
-  assert (qr->options.pure_lits);
-  Var *var = LIT2VARPTR (qr->pcnf.vars, lit);
-  assert (var->assignment == ASSIGNMENT_UNDEF);
-  assert (eabs_get_qtype_of_var (qr, var) == QTYPE_FORALL);
-  ClausePtrStack *occs = LIT_NEG (lit) ?
-    &var->neg_occ_clauses : &var->pos_occ_clauses; 
-
-  /* Check of universal variable is pure and enqueue assignment to
-     shorten clauses. */
-  if (!find_unsatisfied_occ (qr, occs))
-    {
-      assign_and_enqueue (qr, var, LIT_NEG (lit) ? 
-			  ASSIGNMENT_FALSE : ASSIGNMENT_TRUE);
-      if (qr->options.verbosity >= 2)
-	fprintf (stderr, "  univ var %u is pure, assigned to %d\n", var->id, 
-		 var->assignment);
-      qr->total_pure_assignments++;
-    }
-}
-
-static void
-check_and_assign_universal_pure_lits (QRATPlusPre * qr, Clause * c)
-{
-  assert (qr->options.pure_lits);
-  assert (is_clause_satisfied (qr, c));
-  assert (c->cnt_sat_lits == 0);
-  LitID *p, *e;
-  for (p = c->lits, e = p + c->num_lits; p < e; p++)
-    {
-      LitID lit = *p;
-      Var *var = LIT2VARPTR (qr->pcnf.vars, lit);
-      if (var->assignment == ASSIGNMENT_UNDEF && 
-	  eabs_get_qtype_of_var (qr, var) == QTYPE_FORALL)
-	check_and_assign_universal_pure_lits_aux (qr, lit);
-    }
-}
-
-static void
-pure_lits_increase_sat_lit_counts (QRATPlusPre * qr, Var * prop_var)
-{
-  qr->pure_lits_cnt_update_calls++;
-  assert (qr->options.pure_lits);
-  assert (prop_var->assignment != ASSIGNMENT_UNDEF);
-  assert (!prop_var->propagated);
-  /* Consider occurrences satisfied by 'prop_var' assignment. */
-  ClausePtrStack *occs = prop_var->assignment == ASSIGNMENT_FALSE ?
-    &prop_var->neg_occ_clauses : &prop_var->pos_occ_clauses; 
-
-  Clause **occ_p, **occ_e;
-  for (occ_p = occs->start, occ_e = occs->top; occ_p < occ_e; occ_p++)
-    {
-      qr->pure_lits_occs_seen++;
-      Clause *c = *occ_p;
-      if (!c->ignore_in_qbcp && !c->redundant)
-	{
-	  if (qr->options.verbosity >= 2)
-	    {
-	      fprintf (stderr, "    increasing sat-lit-cnt (old value: %u) of clause: ", c->cnt_sat_lits);
-	      print_lits (qr, stderr, c->lits, c->num_lits, 1);
-	    }
-	  if (c->cnt_sat_lits == 0 && c->cnt_univ_lits > 0)
-	    check_and_assign_universal_pure_lits (qr, c);
-	  c->cnt_sat_lits++;
-	}
-    }
-}
-
 /* Like 'propagate_assigned_var (...)' but based on watched literals. */
 static QBCPState
-propagate_assigned_var_watched_lits (QRATPlusPre * qr, Var * var)
+propagate_assigned_var_watched_lits (QRATPrePlus * qr, Var * var)
 {
   assert (var->assignment != ASSIGNMENT_UNDEF);
   assert (!var->propagated);
@@ -802,80 +643,13 @@ propagate_assigned_var_watched_lits (QRATPlusPre * qr, Var * var)
     }
 
   if (state == QBCP_STATE_UNKNOWN)
-    {
-      if (qr->options.pure_lits)
-	pure_lits_increase_sat_lit_counts (qr, var);
-      var->propagated = 1;
-    }
+    var->propagated = 1;
 
   return state;
 }
 
-
 static QBCPState
-propagate_assigned_var (QRATPlusPre * qr, Var * var)
-{
-  fprintf (stderr, "FUNCTION DEPRECATED!\n");
-  abort ();
-
-  assert (var->assignment != ASSIGNMENT_UNDEF);
-  assert (!var->propagated);
-
-  if (qr->options.verbosity >= 2)
-    {
-      fprintf (stderr, "  propagate assignment: %d\n",
-               var->assignment == ASSIGNMENT_FALSE ? -var->id : var->id);
-    }
-  
-  QBCPState state = QBCP_STATE_UNKNOWN;
-
-  /* Check clauses shortened by assignment to detect units and conflicts. */
-  ClausePtrStack *occs = var->assignment == ASSIGNMENT_FALSE ?
-    &var->pos_occ_clauses : &var->neg_occ_clauses; 
-  Clause **occ_p, **occ_e;
-  for (occ_p = occs->start, occ_e = occs->top;
-       occ_p < occ_e && state == QBCP_STATE_UNKNOWN; occ_p++)
-    {
-      Clause *c = *occ_p;
-      /* Must ignore tested clause and also redundant clauses. */
-      if (!c->ignore_in_qbcp && !c->redundant)
-        {
-          state = propagate_clause (qr, c);
-          qr->qbcp_cur_props++;
-        }
-    }
-
-  if (state == QBCP_STATE_UNKNOWN)
-    {
-
-    }
-
-  var->propagated = 1;
-  
-  return state;
-}
-
-static void
-assign_vars_from_pure_input_lits (QRATPlusPre *qr)
-{
-  assert (qr->options.pure_lits);
-  if (qr->options.verbosity >= 2)
-    fprintf (stderr, "  Assigning variables from input pure literals\n");   
- 
-  LitID *p, *e;
-  for (p = qr->pure_input_lits.start, e = qr->pure_input_lits.top; p < e; p++)
-    {
-      LitID lit = *p;
-      Var *var = LIT2VARPTR (qr->pcnf.vars, lit);
-      assert (var->assignment == ASSIGNMENT_UNDEF);
-      assert (var->scope->type == QTYPE_FORALL);
-      assign_and_enqueue (qr, var, LIT_NEG (lit) ? 
-                          ASSIGNMENT_FALSE : ASSIGNMENT_TRUE);
-    }
-}
-
-static QBCPState
-assign_vars_from_unit_input_clauses (QRATPlusPre *qr)
+assign_vars_from_unit_input_clauses (QRATPrePlus *qr)
 {
   QBCPState state = QBCP_STATE_UNKNOWN;
 
@@ -899,12 +673,12 @@ assign_vars_from_unit_input_clauses (QRATPlusPre *qr)
    'lit' to make sure that assignments from all literals in clause are
    enqueued. */
 static QBCPState
-assign_vars_from_tested_clause (QRATPlusPre *qr, Clause *c, LitID lit)
+assign_vars_from_tested_clause (QRATPrePlus *qr, Clause *c, LitID lit)
 {
   QBCPState state = QBCP_STATE_UNKNOWN;
 
   const Nesting pivot_nesting = lit ? 
-    LIT2VARPTR (qr->pcnf.vars, lit)->scope->nesting : UINT_MAX;
+    LIT2VARPTR (qr->pcnf.vars, lit)->qblock->nesting : UINT_MAX;
 
   if (qr->options.verbosity >= 2)
     fprintf (stderr, "  Assigning variables from tested clause\n");   
@@ -921,12 +695,12 @@ assign_vars_from_tested_clause (QRATPlusPre *qr, Clause *c, LitID lit)
 
           /* Ignore literals inner to the pivot. */
           if (qr->options.ignore_inner_lits && 
-              cl_var->scope->nesting > pivot_nesting)
+              cl_var->qblock->nesting > pivot_nesting)
             continue;
 
 	  /* Compute maximum nesting over initially assigned variables. */
-	  if (cl_var->scope->nesting > qr->eabs_nesting_aux)
-	    qr->eabs_nesting_aux = cl_var->scope->nesting;
+	  if (cl_var->qblock->nesting > qr->eabs_nesting_aux)
+	    qr->eabs_nesting_aux = cl_var->qblock->nesting;
           if (cl_var->assignment == ASSIGNMENT_UNDEF)
             assign_and_enqueue (qr, cl_var, LIT_NEG (cl) ?
                                 ASSIGNMENT_TRUE : ASSIGNMENT_FALSE);
@@ -946,7 +720,7 @@ assign_vars_from_tested_clause (QRATPlusPre *qr, Clause *c, LitID lit)
 }
 
 static QBCPState
-assign_vars_from_other_clause (QRATPlusPre *qr, Clause *occ, LitID lit)
+assign_vars_from_other_clause (QRATPrePlus *qr, Clause *occ, LitID lit)
 {
   QBCPState state = QBCP_STATE_UNKNOWN;
 
@@ -954,10 +728,10 @@ assign_vars_from_other_clause (QRATPlusPre *qr, Clause *occ, LitID lit)
     fprintf (stderr, "  Assigning variables from other (occ) clauses\n");   
   
   Var *var = LIT2VARPTR (qr->pcnf.vars, lit);
-  const Nesting nesting = var->scope->nesting;
+  const Nesting nesting = var->qblock->nesting;
   
-  /* Collect assignments from: all lits in 'occ' from scope smaller or
-     equal to scope of 'lit' except in '\neg lit'. */
+  /* Collect assignments from: all lits in 'occ' from qblock smaller or
+     equal to qblock of 'lit' except in '\neg lit'. */
   LitID *p, *e;
   for (p = occ->lits, e = p + occ->num_lits; p < e; p++)
     {
@@ -965,13 +739,13 @@ assign_vars_from_other_clause (QRATPlusPre *qr, Clause *occ, LitID lit)
       Var *cl_var = LIT2VARPTR (qr->pcnf.vars, cl);
       if (cl != -lit)
         {
-          /* Literals are sorted, hence abort if literal from scope
+          /* Literals are sorted, hence abort if literal from qblock
              larger than that of 'lit' is seen. */
-          if (cl_var->scope->nesting <= nesting)
+          if (cl_var->qblock->nesting <= nesting)
             {
 	      /* Compute maximum nesting over initially assigned variables. */
-	      if (cl_var->scope->nesting > qr->eabs_nesting_aux)
-		qr->eabs_nesting_aux = cl_var->scope->nesting;
+	      if (cl_var->qblock->nesting > qr->eabs_nesting_aux)
+		qr->eabs_nesting_aux = cl_var->qblock->nesting;
               if (cl_var->assignment == ASSIGNMENT_UNDEF)
                 assign_and_enqueue (qr, cl_var, LIT_NEG (cl) ?
                                     ASSIGNMENT_TRUE : ASSIGNMENT_FALSE);
@@ -995,7 +769,7 @@ assign_vars_from_other_clause (QRATPlusPre *qr, Clause *occ, LitID lit)
 
 /* For assertion checking only. */
 static int
-has_formula_empty_clause (QRATPlusPre *qr)
+has_formula_empty_clause (QRATPrePlus *qr)
 {
   Clause *c;
   for (c = qr->pcnf.clauses.first; c; c = c->link.next)
@@ -1005,7 +779,7 @@ has_formula_empty_clause (QRATPlusPre *qr)
 }
 
 static int
-has_formula_unit_clause (QRATPlusPre *qr)
+has_formula_unit_clause (QRATPrePlus *qr)
 {
   Clause *c;
   for (c = qr->pcnf.clauses.first; c; c = c->link.next)
@@ -1014,35 +788,9 @@ has_formula_unit_clause (QRATPlusPre *qr)
   return 0;
 }
 
-static int
-has_formula_unassigned_univ_pure_lits (QRATPlusPre *qr)
-{
-  Var *var, *var_e;
-  for (var = qr->pcnf.vars, var_e = var + qr->pcnf.size_vars; var < var_e; var++)
-    {
-      if (var->id)
-        {
-          if (eabs_get_qtype_of_var (qr, var) == QTYPE_FORALL && 
-              var->assignment == ASSIGNMENT_UNDEF)
-            {
-              if (!find_unsatisfied_occ (qr, &var->neg_occ_clauses))
-                {
-                  if (find_unsatisfied_occ (qr, &var->pos_occ_clauses))
-                    return 1;
-                }
-              else if (!find_unsatisfied_occ (qr, &var->pos_occ_clauses))
-                {
-                  return 1;
-                }
-            }
-        }
-    }
-  return 0;
-}
-
 /* For assertion checking only. */
 static void
-assert_formula_state_after_qbcp (QRATPlusPre * qr, QBCPState state)
+assert_formula_state_after_qbcp (QRATPrePlus * qr, QBCPState state)
 {
   if (state == QBCP_STATE_UNSAT)
     assert (has_formula_empty_clause (qr));
@@ -1051,14 +799,12 @@ assert_formula_state_after_qbcp (QRATPlusPre * qr, QBCPState state)
       assert (state == QBCP_STATE_UNKNOWN);
       assert (!has_formula_empty_clause (qr));
       assert (!has_formula_unit_clause (qr));
-      assert (!qr->options.pure_lits || 
-              !has_formula_unassigned_univ_pure_lits (qr));
     }
 }
 
 /* For assertion checking only. */
 static void
-assert_check_clause_watched_lits (QRATPlusPre *qr, Clause *c)
+assert_check_clause_watched_lits (QRATPrePlus *qr, Clause *c)
 {
   /* No watched literals in empty or unit clauses. */
   if (c->num_lits <= 1)
@@ -1091,7 +837,7 @@ assert_check_clause_watched_lits (QRATPlusPre *qr, Clause *c)
 
 /* For assertion checking only. */
 static void
-assert_watched_lit_state_before_assigning (QRATPlusPre *qr)
+assert_watched_lit_state_before_assigning (QRATPrePlus *qr)
 {
   Clause *c;
   for (c = qr->pcnf.clauses.first; c; c = c->link.next)
@@ -1099,7 +845,7 @@ assert_watched_lit_state_before_assigning (QRATPlusPre *qr)
 }
 
 static QBCPState
-qbcp (QRATPlusPre * qr)
+qbcp (QRATPrePlus * qr)
 {
   qr->qbcp_total_calls++;
   if (!qr->options.no_eabs)
@@ -1139,7 +885,6 @@ qbcp (QRATPlusPre * qr)
 
 #if ASSERT_FORMULA_STATE_AFTER_QBCP
 #ifndef NDEBUG
-  /* TODO: must adapt this check to quantifier block abstraction! */
   assert_formula_state_after_qbcp (qr, state);
 #endif
 #endif
@@ -1154,7 +899,7 @@ qbcp (QRATPlusPre * qr)
    abstraction or with respect to nesting level of largest literal in
    clause. */
 int 
-asymm_taut_check (QRATPlusPre * qr, Clause *c)
+qrat_qat_check (QRATPrePlus * qr, Clause *c)
 {
   assert (qr->eabs_nesting == UINT_MAX);
   assert (qr->eabs_nesting_aux == 0);
@@ -1183,10 +928,6 @@ asymm_taut_check (QRATPlusPre * qr, Clause *c)
   assert_watched_lit_state_before_assigning (qr);
 #endif
 #endif
-
-  /* Assign input pure literals. */
-  if (qr->options.pure_lits)
-    assign_vars_from_pure_input_lits (qr);
 
   /* Collect assignments from unit input clauses and from entire clause 'c'. */
   if ((state = assign_vars_from_unit_input_clauses (qr)) == QBCP_STATE_UNSAT ||
@@ -1238,7 +979,7 @@ asymm_taut_check (QRATPlusPre * qr, Clause *c)
 }
 
 int
-qrat_qbcp_check (QRATPlusPre * qr, Clause *c, LitID lit, Clause *occ)
+qrat_qbcp_check (QRATPrePlus * qr, Clause *c, LitID lit, Clause *occ)
 {  
   assert (qr->eabs_nesting == UINT_MAX);
   assert (qr->eabs_nesting_aux == 0);
@@ -1272,16 +1013,12 @@ qrat_qbcp_check (QRATPlusPre * qr, Clause *c, LitID lit, Clause *occ)
 #endif
 #endif
 
-  /* Assign input pure literals. */
-  if (qr->options.pure_lits)
-    assign_vars_from_pure_input_lits (qr);
-
   /* Enqueue all assignments from unit input clauses. */
   if ((state = assign_vars_from_unit_input_clauses (qr)) == QBCP_STATE_UNSAT ||
       /* Collect assignments from: 'c \ {lit}'. */
       (state = assign_vars_from_tested_clause (qr, c, lit)) == QBCP_STATE_UNSAT ||
-      /* Collect assignments from: all lits in 'occ' from scope smaller or
-         equal to scope of 'lit' except in '\neg lit'. */
+      /* Collect assignments from: all lits in 'occ' from qblock smaller or
+         equal to qblock of 'lit' except in '\neg lit'. */
       (state = assign_vars_from_other_clause (qr, occ, lit)) == QBCP_STATE_UNSAT)
     {
       retract (qr);

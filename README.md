@@ -1,10 +1,15 @@
 # README #
 
-April 30, 2018
+March, 2019
 
 ### OVERVIEW ###
 
-This is version 1.0 of QRATPre+.
+This is version 2.0 of QRATPre+.
+
+Changes from version 1.0 to 2.0:
+
+  - more modularized code base
+  - API to integrate QRATPre+ in other tools (see './examples/api-example.c')
 
 QRATPre+ is a preprocessor to simplify quantified Boolean formulas (QBFs)
 given in prenex conjunctive normal form (PCNF). For simplification, QRATPre+
@@ -92,6 +97,6 @@ without assertions (default).
 
 For comments, questions, bug reports etc. related to QRATPre+, please contact:
 
-Florian Lonsing, TU Wien, Austria
+Florian Lonsing, Stanford University, USA
 
-[http://www.kr.tuwien.ac.at/staff/lonsing/](http://www.kr.tuwien.ac.at/staff/lonsing/)
+[http://www.florianlonsing.com/](http://www.florianlonsing.com/)

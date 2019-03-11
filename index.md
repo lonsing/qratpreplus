@@ -69,7 +69,7 @@ QRATPre+ is free software released under GPLv3:
 The latest release is available from
 [GitHub](https://github.com/lonsing/qratpreplus).
 
-* April 30 2018: [Version 1.0](https://github.com/lonsing/qratpreplus/archive/version-1.0.tar.gz)
+* March 2019: [Version 2.0](https://github.com/lonsing/qratpreplus/archive/version-2.0.tar.gz)
 
 ### EXEMPLIFYING THE POWER OF THE QRAT+ SYSTEM ###
 

@@ -1,7 +1,3 @@
-### NEWS ###
-
-* April/May 2019: submit a paper to the QBF Workshop 2019! [Workshop website: http://fmv.jku.at/qbf19/](http://fmv.jku.at/qbf19/)
-
 ### OVERVIEW ###
 
 QRATPre+ is a novel preprocessor to simplify quantified Boolean formulas (QBFs)

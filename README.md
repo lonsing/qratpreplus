@@ -1,6 +1,6 @@
 # README #
 
-March, 2019
+July, 2019
 
 ### OVERVIEW ###
 
@@ -32,16 +32,19 @@ result, redundancy removal based on QRAT+ is more powerful than based on QRAT.
 
 ### PUBLICATIONS ###
 
+A tool paper related to QRATPre+ appeared at [SAT 2019](http://sat2019.tecnico.ulisboa.pt/):
+
+* Florian Lonsing and Uwe Egly. QRATPre+: Effective QBF Preprocessing
+  via Strong Redundancy Properties. In Proc. of the 22nd International
+  Conference on Theory and Applications of Satisfiability Testing
+  (SAT) 2019, Springer, LNCS. Preprint: [https://arxiv.org/pdf/1904.12927.pdf](https://arxiv.org/pdf/1904.12927.pdf).
+
 The theory behind QRATPre+ is described in our 
 [IJCAR 2018](http://ijcar2018.org/) paper:
 
 * Florian Lonsing and Uwe Egly. QRAT+: Generalizing QRAT by a More Powerful
 QBF Redundancy Property. In Proc. of the 9th International Joint Conference on
-Automated Reasoning (IJCAR) 2018, Springer, LNCS.
-
-A preprint of the above paper is available on arXiv:
-
-* [https://arxiv.org/pdf/1804.02908](https://arxiv.org/pdf/1804.02908)
+Automated Reasoning (IJCAR) 2018, Springer, LNCS. Preprint: [https://arxiv.org/pdf/1804.02908](https://arxiv.org/pdf/1804.02908).
 
 ### USAGE INFORMATION ###
 

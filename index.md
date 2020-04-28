@@ -20,6 +20,10 @@ propagation with universal reduction to handle the literals of certain
 universal variables. This is in contrast to QRAT, which applies propositional
 unit propagation and treats every variable as existentially quantified. As a
 result, redundancy removal based on QRAT+ is more powerful than based on QRAT.
+That strength of QRAT+ is with respect to *single applications* of
+rewrite rules. E.g., QRAT+ can remove particular clauses by a single
+application of a rewrite rule, while QRAT can remove that clause only
+by applying a sequence of rules.
 
 ### PUBLICATIONS ###
 
@@ -76,7 +80,8 @@ The latest release is available from
 
 ### EXEMPLIFYING THE POWER OF THE QRAT+ SYSTEM ###
 
-The following examples illustrate that redundancy removal based on QRAT+ as implemented in QRATPre+ is more powerful than based on QRAT.
+The following examples illustrate that redundancy removal based on QRAT+ as implemented in QRATPre+ is more powerful than based on QRAT, with respect to single applications of rewrite rules.
+In our implementation, we try to remove clauses and literals by single applications of rewrite rules in multiple rounds. E.g., we do not attempt to remove a clause by applying a sequence of rewrite rules to it within a round.
 
 #### Clause Elimination ####
 
@@ -111,7 +116,7 @@ QRATPre+ is able to remove _all_ clauses in `formula.qdimacs`. The call `./qratp
 p cnf 0 0
 ```
 
-Now we configure QRATPre+ to apply redundancy detection based on the QRAT system instead of QRAT+ by parameter `--no-eabs`. The formula produced by calling `./qratpre+ --print-formula --no-eabs ./formula.qdimacs` is exactly the same as the given one, i.e., _no_ redundant clauses can be detected using the QRAT system:
+Now we configure QRATPre+ to apply redundancy detection based on the QRAT system instead of QRAT+ by parameter `--no-eabs`. The formula produced by calling `./qratpre+ --print-formula --no-eabs ./formula.qdimacs` is exactly the same as the given one, i.e., _no_ redundant clauses can be detected:
 
 ```
 p cnf 12 14
@@ -193,7 +198,7 @@ e 6 0
 -5 6 0
 ```
 
-Hence universal literal elimination based on the QRAT+ proof system is more powerful than based on QRAT (see also Proposition 5 in our related [IJCAR 2018 paper](https://arxiv.org/pdf/1804.02908)).
+Hence universal literal elimination based on the QRAT+ proof system is more powerful than based on QRAT with respect to single applications of rewrite rules (see also Proposition 5 in our related [IJCAR 2018 paper](https://arxiv.org/pdf/1804.02908)).
 
 
 ### CONTACT INFORMATION ###

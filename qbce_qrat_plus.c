@@ -47,6 +47,23 @@ typedef enum QRATPlusCheckMode QRATPlusCheckMode;
    expensive. */
 #define QRATPLUS_SOFT_TIME_LIMIT_CHECK_PERIOD 10
 
+/* Returns non-zero iff clause 'c' contains at least one literal of a
+   variable that appears in the outermost (i.e. leftmost) quantifier
+   block. */
+static int
+clause_has_outermost_qblock_literal (QRATPrePlus * qr, Clause *c)
+{
+  LitID *p, *e;
+  for (p = c->lits, e = p + c->num_lits; p < e; p++)
+    {
+      LitID lit = *p;
+      Var *var = LIT2VARPTR (qr->pcnf.vars, lit);
+      if (var->qblock->nesting == 0)
+        return 1;
+    }
+  return 0;
+}
+
 /* Returns true if and only if 'lit' appears in the literal array
    bounded by 'start' and 'end' (position 'end' is not part of the
    array) AND 'lit' is from a qblock of nesting level equal to
@@ -346,6 +363,10 @@ reschedule_is_clause_within_limits (QRATPrePlus * qr, Clause *c)
         }
     }
 
+  if (qr->options.ignore_outermost_vars &&
+      clause_has_outermost_qblock_literal (qr, c))
+    return 0;
+  
   return 1;
 }
 
@@ -616,6 +637,9 @@ find_and_mark_redundant_clauses_aux (QRATPrePlus * qr,
            !exceeded && cp < ce; cp++)
         {
           Clause *c = *cp;
+          assert (!qr->options.ignore_outermost_vars ||
+                  !clause_has_outermost_qblock_literal (qr, c));
+          
           /* NOTE: we may encounter clauses 'c' with 'c->redundant' true
              because such clauses may appear on 'rescheduled' (see comment above)
              and we just swap the sets at the beginning of each iteration. */
@@ -964,6 +988,9 @@ find_and_delete_redundant_literals_aux (QRATPrePlus * qr,
            !exceeded && cp < ce; cp++)
         {
           Clause *c = *cp;
+          assert (!qr->options.ignore_outermost_vars ||
+                  !clause_has_outermost_qblock_literal (qr, c));
+
           /* NOTE: we may encounter clauses 'c' with 'c->redundant' true
              because such clauses may appear on 'rescheduled' (see comment above)
              and we just swap the sets at the beginning of each iteration. */

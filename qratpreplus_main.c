@@ -76,6 +76,8 @@ typedef struct QRATPrePlusApp QRATPrePlusApp;
 "    --permute                     randomly permute clause lists between iterations\n" \
 "    --formula-stats               compute formula statistics before and after preprocessing\n" \
 "    --seed=<n>                    in combination with '--permute': random seed <n>(default: 0)\n" \
+"    --ignore-outermost-vars       do not eliminate clauses or universal literals in clauses that contain\n"\
+"                                    a literal from the outermost (i.e. first) quantifier block\n" \
 "\n"
 
 /* Macro to print message and abort. */

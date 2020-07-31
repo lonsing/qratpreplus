@@ -311,6 +311,10 @@ qratpreplus_configure (QRATPrePlus * qr, char *opt_str)
     {
       qr->options.no_qbce = 1;
     }
+  else if (!strcmp (opt_str, "--ignore-outermost-vars"))
+    {
+      qr->options.ignore_outermost_vars = 1;
+    }
   else if (!strcmp (opt_str, "--no-qrate"))
     {
       qr->options.no_qrate = 1;

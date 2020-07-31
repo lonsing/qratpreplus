@@ -447,6 +447,9 @@ struct QRATPrePlus
     unsigned int max_time;
     unsigned int verbosity;
     unsigned int seed;
+    /* Do not eliminate clauses or eliminate literals from clauses
+       that contain variables from the outermost quantifier block. */
+    unsigned int ignore_outermost_vars:1;
     unsigned int no_qbce:1;
     /* Before QRAT tests, permute clause set randomly based on value of
        'seed'. Permuting can be used to test the impact of non-confluence of
